@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" width="100%" height="100%" verticalAlign="middle"
+		 verticalScrollPolicy="off" horizontalScrollPolicy="off" paddingLeft="4">
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.vo.FlavorVO;
+			import com.kaltura.vo.KalturaFlavorParams;
+			import com.kaltura.vo.KalturaLiveParams;
+
+			
+			[Bindable]
+			private var txt:String = '';
+
+			override public function set data(value:Object):void {
+				super.data = value;
+				
+				var flv:KalturaFlavorParams = (value as FlavorVO).kFlavor;  
+				if (flv is KalturaLiveParams && flv.tags && flv.tags.indexOf('ingest') != -1) {
+					txt = resourceManager.getString('account', 'n_a');
+				}
+				else {
+					var sWi:String = (flv.width == 0) ? resourceManager.getString('account', 'autoDim') : flv.width + '';
+					var sHi:String = (flv.height == 0) ? resourceManager.getString('account', 'autoDim') : flv.height + '';
+					txt = sWi + ' x ' + sHi;
+				}				
+			}
+
+		]]>
+	</mx:Script>
+	<mx:Label text="{txt}" toolTip="{txt}" />
+</mx:HBox>

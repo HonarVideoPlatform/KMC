@@ -1,0 +1,316 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:LineChart xmlns:mx="http://www.adobe.com/2006/mxml" seriesFilters="{[]}" height="200" dataTipFunction="onDataTip"
+			  showDataTips="true">
+	<!--  -->
+
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.kmc.modules.analytics.utils.TimeConsts;
+			import com.kaltura.utils.ObjectUtil;
+			
+			import mx.charts.HitData;
+			import mx.charts.chartClasses.IAxis;
+			import mx.collections.ArrayCollection;
+			import mx.formatters.DateFormatter;
+			import mx.graphics.Stroke;
+			
+
+			private const strokeColors:Array = [0x0099cb, 0x9bbb2f, 0xe6171a, 0x0ec34e, 0xe9a219, 0x026a8a,0xdbd103];
+				
+
+			/**
+			 * formatting for y values. 
+			 * the function takes as an argument the required y value. 
+			 * */
+			public var dataFormatFunc:Function = defaultDataFormat;
+			
+			[Bindable]
+			/**
+			 * if true, x axis labels show hours as well as dates
+			 * */
+			public var showHours:Boolean = false;
+			
+			private var _minHAxisDate:Date;
+			private var _maxHAxisDate:Date;
+
+			
+			private function defaultDataFormat(val:*):String {
+				return Number(val).toFixed(2);
+			}
+
+			/**
+			 * override the dataProvider to create the graph points from the rough
+			 * @internal
+			 * we don't get any data for days where the value is 0, so we
+			 * first create all needed points with y=0, then go through the data
+			 * we received and replace y values where we have matching x values (dates).
+			 */
+			override public function set dataProvider(value:Object):void {
+				var i:int, j:int, k:int;
+				var obj:Object;
+				var arrCol:ArrayCollection;
+				var line:LineSeries;
+				var provider:ArrayCollection = new ArrayCollection(); // actual data provider
+
+				// fill the 0 points from min to max and not using the build in interpolation
+				// first we create all points with correct x and y=0
+				
+				if (value && value is ArrayCollection) {
+					if (showHours) {
+						if (_maxHAxisDate && _minHAxisDate) {
+							var minMaxHrs:int = (_maxHAxisDate.time - _minHAxisDate.time) / TimeConsts.HOUR;
+							for (j = 0; j <= minMaxHrs; j++) {
+								obj = new Object();
+								obj.x = _minHAxisDate.time + (j * TimeConsts.HOUR);
+								if (series.length) {
+									for each (line in series) {
+										obj[line.yField] = 0;
+									}
+								}
+								else {
+									obj.y = 0;
+								}
+								provider.addItem(obj);
+							}
+						}
+						// if in the value received there is a point matching a point on the graph, 
+						// use its value instead of the initial 0.
+						arrCol = value as ArrayCollection;
+						provider = fixTimeOffsets2(provider, arrCol);
+						for (i = 0; i < arrCol.length; i++) {
+							var secondDate:Date = new Date(arrCol[i].x);
+							for (k = 0; k < provider.length; k++) {
+								var firstDate:Date = new Date(provider[k].x);
+								if (firstDate.hours == secondDate.hours && firstDate.date == secondDate.date && firstDate.fullYear == secondDate.fullYear && firstDate.month == secondDate.month) {
+									// need to copy values, so we will keep fields with "0" (no value)
+									ObjectUtil.copyObject(arrCol[i], provider[k]); 
+									break;
+								}
+							}
+						}
+					}
+					else {
+						if (_maxHAxisDate && _minHAxisDate) {
+							var minMaxDays:int = (_maxHAxisDate.time - _minHAxisDate.time) / TimeConsts.DAY;
+							for (j = 0; j <= minMaxDays; j++) {
+								obj = new Object();
+								obj.x = _minHAxisDate.time + (j * TimeConsts.DAY);
+								if (series.length) {
+									for each (line in series) {
+										obj[line.yField] = 0;
+									}
+								}
+								else {
+									obj.y = 0;
+								}
+								provider.addItem(obj);
+							}
+						}
+						// if in the value received there is a point matching a point on the graph, 
+						// use its value instead of the initial 0.
+						arrCol = value as ArrayCollection;
+						provider = fixTimeOffsets2(provider, arrCol);
+						for (i = 0; i < arrCol.length; i++) {
+							var secondDate:Date = new Date(arrCol[i].x);
+							for (k = 0; k < provider.length; k++) {
+								var firstDate:Date = new Date(provider[k].x);
+								if (firstDate.date == secondDate.date && firstDate.fullYear == secondDate.fullYear && firstDate.month == secondDate.month) {
+									// need to copy values, so we will keep fields with "0" (no value)
+									ObjectUtil.copyObject(arrCol[i], provider[k]); 
+									break;
+								}
+							}
+						}
+					}
+					this.showAllDataTips = false;
+					this.showDataTips = true;
+					super.dataProvider = provider;
+				}
+				else {
+					super.dataProvider = null;
+				}
+			}
+			
+			
+			/**
+			 * in case there's a DST issue in the range, fix it.
+			 * @return 	the fixed mockdata array
+			 * */
+			private function fixTimeOffsets2(mockData:ArrayCollection, serverData:ArrayCollection):ArrayCollection {
+				var k:int;
+				var mock:Object;
+				var lastDate:Date;
+				var currentDate:Date;
+				for (k = 0; k < mockData.length; k++) {
+					mock = mockData[k]; 
+					currentDate = new Date(mock.x);
+					if (lastDate) {
+						if (lastDate.date == currentDate.date) {
+							//fix offset : from summertime to wintertime
+							mock.x += TimeConsts.HOUR;
+							currentDate = new Date(mock.x);
+						}
+						else if (lastDate.date == currentDate.date - 2) {
+							// fix offset: from wintertime to summertime
+							mock.x -= TimeConsts.HOUR;
+							currentDate = new Date(mock.x);
+						}
+					}
+					lastDate = currentDate;
+				}
+				return mockData;
+			}
+			
+			
+			/**
+			 * there is an offset between the x values of the server data and
+			 * the x value of the mockup data (where the y value is 0).
+			 * caculate offset and fix values on the mock data.
+			 * @return 	the fixed mockdata array
+			 * */
+			private function fixTimeOffsets(mockData:ArrayCollection, serverData:ArrayCollection):ArrayCollection {
+				if (serverData.length <= 0)
+					return mockData;
+
+				var realDate:Date = new Date(serverData[0].x);
+				var mockDate:Date;
+				var offset:int;
+				var k:int;
+				// find the what's offset
+				for (k = 0; k < mockData.length; k++) {
+					mockDate = new Date(mockData[k].x);
+					if (realDate.date == mockDate.date && realDate.fullYear == mockDate.fullYear && realDate.month == mockDate.month) {
+						offset = mockData[k].x - serverData[0].x;
+						break;
+					}
+				}
+				// fix all mock data
+				var mock:Object;
+				var lastDate:Date;
+				var currentDate:Date;
+				for (k = 0; k < mockData.length; k++) {
+					mock = mockData[k]; 
+					mock.x -= offset;
+					currentDate = new Date(mock.x);
+					if (lastDate) {
+						if (lastDate.date == currentDate.date) {
+							//fix offset : from summertime to wintertime
+							mock.x += TimeConsts.HOUR;
+							offset -= TimeConsts.HOUR;
+						}
+						else if (lastDate.date == currentDate.date - 2) {
+							// fix offset: from wintertime to summertime
+							mock.x -= TimeConsts.HOUR;
+							offset += TimeConsts.HOUR;
+						}
+					}
+					mockData.itemUpdated(mock, "x", null, mock.x);
+					lastDate = currentDate;
+				}
+				return mockData;
+			}
+
+
+			private function onDataTip(data:HitData):String {
+				var date:Date = new Date(data.item.x);
+				var dateString:String = df.format(date);
+				var tipString:String = dateString + '\n';
+				tipString += dataFormatFunc(data.item[(data.element as LineSeries).yField]);
+				return tipString;
+			}
+
+
+			public function set minHAxisDate(date:Date):void {
+				var dummy:Date = new Date(date.fullYear, date.month, date.date);
+				horizontalDateTimeAxis.minimum = dummy;
+				_minHAxisDate = dummy;
+			}
+
+
+			public function set maxHAxisDate(date:Date):void {
+				var dummy:Date;
+				if (showHours) {
+					dummy = new Date(date.fullYear, date.month, date.date, date.hours, date.minutes);
+				}
+				else {
+					dummy = new Date(date.fullYear, date.month, date.date);
+				}
+				horizontalDateTimeAxis.maximum = dummy;
+				_maxHAxisDate = dummy;
+			}
+			
+			
+			/**
+			 * sets series with LineSeries for each given value.
+			 * @param fields list of strings to use as yField values 
+			 * */
+			public function set yFields(fields:Array):void {
+				var line:LineSeries;
+				var stroke:Stroke;
+				var tmp:Array = [];
+				var i:int = 0;
+				for each (var field:String in fields) {
+					line = new LineSeries();
+					line.xField = 'x';
+					line.yField = field;
+					line.displayName = resourceManager.getString('analytics', field);
+					if (!line.displayName) line.displayName = field;
+					stroke = new Stroke();
+					stroke.weight = 3;
+					stroke.color = strokeColors[(i++%strokeColors.length)]; // keep first line in original color
+					line.setStyle('lineStroke', stroke);
+					line.setStyle('showDataEffect', rearrangeData);
+					tmp.push(line);
+				}
+				this.series = tmp;
+			}
+			
+			protected function horizAxisLabelFunction(labelValue:Object, previousValue:Object, axis:IAxis):String {
+				// because of daylight saving time, we might get the same date twice (27/10/13 00:00 followed by 27/10/13 23:00).
+				//in this case, assume the second one is meant to be the next day (28/10/13).
+				if (previousValue != null && labelValue != null && (labelValue as Date).date == (previousValue as Date).date) {
+					labelValue.time += TimeConsts.HOUR;
+				}
+				
+				//df.formatString = "M/D/YY"; // use the default value from SharedResources
+				if (showHours) {
+					df.formatString = resourceManager.getString('analytics', 'liveXAxisTimeFormat');
+				}
+				var result:String =  df.format(labelValue);
+				return result;
+			}
+		]]>
+	</mx:Script>
+
+	<mx:DateFormatter id="df" />
+	<!-- Define chart effects -->
+	<mx:Stroke id="axis" color="0xb1b1b1" weight="2"/>
+
+	<mx:SeriesInterpolate id="rearrangeData" duration="1000" minimumElementDuration="200" elementOffset="0"/>
+
+	<mx:horizontalAxisRenderers>
+		<mx:AxisRenderer placement="bottom" axis="{horizontalDateTimeAxis}" axisStroke="{axis}" />
+	</mx:horizontalAxisRenderers>
+
+	<mx:horizontalAxis>
+		<mx:DateTimeAxis id="horizontalDateTimeAxis" dataUnits="{showHours ? 'hours' : 'days'}" labelUnits="{showHours ? 'hours' : 'days'}"
+						 displayLocalTime="true" labelFunction="horizAxisLabelFunction" />
+	</mx:horizontalAxis>
+
+	<mx:verticalAxisRenderers>
+		<mx:AxisRenderer placement="left" axis="{verticalLinearAxis}" axisStroke="{axis}" />
+	</mx:verticalAxisRenderers>
+
+	<mx:verticalAxis>
+		<mx:LinearAxis id="verticalLinearAxis" autoAdjust="false" baseAtZero="true"/>
+	</mx:verticalAxis>
+
+	<mx:series>
+		<mx:LineSeries id="lineSeries" yField="y" xField="x" showDataEffect="rearrangeData">
+			<mx:lineStroke>
+				<mx:Stroke color="#9ab40c" weight="3"/>
+			</mx:lineStroke>
+		</mx:LineSeries>
+	</mx:series>
+
+</mx:LineChart>

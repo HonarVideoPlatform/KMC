@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml" xmlns:controls="com.kaltura.controls.*" verticalAlign="middle"
+		 creationComplete="onCreationComplete()" paddingBottom="0" paddingTop="0">
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.utils.DateFieldWithTimeStepperLogic;
+
+			private var _timeManager:DateFieldWithTimeStepperLogic;
+
+			[Bindable]
+			public var selectedDate:Date;
+
+			[Bindable]
+			public var yearNavigationEnabled:Boolean;
+
+
+			private function onCreationComplete():void {
+				_timeManager = new DateFieldWithTimeStepperLogic(dateField, null, dateTime, null);
+				if (selectedDate) {
+					var n:Number = selectedDate.time / 1000; // seconds GMT
+					n -= selectedDate.timezoneOffset * 60; // seconds, local time
+					var o:Object = dateTime.getTimeAsObject(n);
+					dateTime.timeValue = o;
+					// remove ms of hours, minutes, seconds
+					n = selectedDate.time;
+					n -= o.second * 1000;
+					n -= o.minute * 60000;
+					n -= o.hour * 3600000;
+					dateField.selectedDate = new Date(n);
+				}
+			}
+
+
+			private function updateSelectedDate():void {
+				if (!dateField.selectedDate)
+					return;
+
+				var seconds:Number = 0;
+				seconds += Math.floor(dateField.selectedDate.time / 1000);
+				seconds += Math.floor(_timeManager.calculateTime(dateTime.timeValue, dateTime.am_pm));
+				if (!selectedDate)
+					selectedDate = new Date();
+				selectedDate.time = (seconds) * 1000;
+
+			}
+		]]>
+	</mx:Script>
+	<mx:DateField id="dateField" height="{this.height}" width="100" editable="true" enabled="{this.enabled}"
+				  change="{updateSelectedDate()}" yearNavigationEnabled="{yearNavigationEnabled}"/>
+	<controls:TimeStepper id="dateTime" height="{this.height}" is24Hour="false" showAMPMLabel="true" showHours="true"
+						  styleName="timeEntry" enabled="{this.enabled}" change="{updateSelectedDate()}"/>
+</mx:HBox>

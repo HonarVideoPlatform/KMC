@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<flexLibProperties includeAllClasses="true" useMultiPlatformConfig="false" version="3">
+  <includeClasses>
+    <classEntry path="com.kaltura.types.KalturaEntryAttendeeOrderBy"/>
+    <classEntry path="com.kaltura.types.KalturaEntryAttendeeStatus"/>
+    <classEntry path="com.kaltura.types.KalturaMediaServerOrderBy"/>
+    <classEntry path="com.kaltura.vo.KalturaEntryAttendeeBaseFilter"/>
+    <classEntry path="com.kaltura.vo.KalturaEntryAttendeeFilter"/>
+    <classEntry path="com.kaltura.vo.KalturaFileSyncImportJobData"/>
+    <classEntry path="com.kaltura.vo.KalturaMediaServerFilter"/>
+    <classEntry path="com.kaltura.vo.KalturaWidevineFlavorParamsOutputFilter"/>
+    <classEntry path="com.kaltura.vo.KalturaYahooSyndicationFeed"/>
+    <classEntry path="com.kaltura.vo.KalturaYahooSyndicationFeedBaseFilter"/>
+    <classEntry path="com.kaltura.vo.KalturaYahooSyndicationFeedFilter"/>
+    <classEntry path="ru.inspirit.net.MultipartURLLoader"/>
+    <classEntry path="ru.inspirit.net.events.MultipartURLLoaderEvent"/>
+  </includeClasses>
+  <includeResources/>
+  <namespaceManifests/>
+</flexLibProperties>

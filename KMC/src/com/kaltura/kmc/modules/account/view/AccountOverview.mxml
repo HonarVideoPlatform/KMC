@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:HBox xmlns:mx="http://www.adobe.com/2006/mxml"
+		 implements="com.kaltura.kmc.modules.account.view.interfaces.IAccountPanel"
+		 xmlns:validators="com.kaltura.validators.*">
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.analytics.GoogleAnalyticsConsts;
+			import com.kaltura.analytics.GoogleAnalyticsTracker;
+			import com.kaltura.analytics.KAnalyticsTracker;
+			import com.kaltura.analytics.KAnalyticsTrackerConsts;
+			import com.kaltura.edw.business.permissions.PermissionManager;
+			import com.kaltura.kmc.modules.account.control.events.PartnerEvent;
+			import com.kaltura.kmc.modules.account.control.events.UserEvent;
+			import com.kaltura.kmc.modules.account.vo.AdminVO;
+			import com.kaltura.kmc.modules.account.vo.PartnerVO;
+			import com.kaltura.types.KalturaStatsKmcEventType;
+			import com.kaltura.vo.KalturaPartner;
+			import com.kaltura.vo.KalturaUser;
+			
+			import mx.binding.utils.BindingUtils;
+			import mx.collections.ArrayCollection;
+			import mx.controls.ComboBox;
+			import mx.events.ListEvent;
+			import mx.events.ValidationResultEvent;
+
+			private const LBL_WIDTH:Number = 250;
+			private const TXT_WIDTH:Number = 310;
+
+			[Bindable]
+			public var partnerData:PartnerVO;
+
+			[Bindable]
+			public var adminData:AdminVO;
+
+
+			[ArrayElementType("com.kaltura.vo.KalturaUser")]
+			/**
+			 * @copy #users
+			 * */
+			private var _users:ArrayCollection;
+
+
+			/**
+			 * original partner data so we can revert
+			 * */
+			private var _clonedPartnerData:PartnerVO;
+
+			/**
+			 * original admin data so we can revert
+			 * */
+			private var _clonedAdminData:AdminVO;
+
+
+			[Bindable]
+			private var _ctList:Array = [];
+			[Bindable]
+			private var _ctComboBox:Array = [];
+			
+			private var isReady:Boolean = false;
+
+			public static const NAME:String = "overview";
+
+
+			public function init():void {
+				if (isReady) {
+					reloadData();
+				}
+				else{
+					//populate the content type list
+					var s:String = resourceManager.getString('account', 'contentList');
+					_ctList = s.split(',');
+					_ctComboBox = (resourceManager.getString('account', 'describeList')).split(',');
+	
+					_clonedAdminData = adminData.clone(); //admin has the email when the application init (in flashvars) so it can be set here
+	
+					BindingUtils.bindSetter(onPartnerDataLoaded, this, "partnerData");
+					BindingUtils.bindSetter(onPartnerDataChanged, this, ["partnerData", "partner"]);
+					BindingUtils.bindSetter(onAdminDataLoaded, this, "adminData");
+	
+					// load partner data
+					var partnerEvent:PartnerEvent = new PartnerEvent(PartnerEvent.GET_PARTNER_INFO);
+					partnerEvent.dispatch();
+					
+					// load changeable data
+					reloadData();
+
+					// set ui according to permissions
+					PermissionManager.getInstance().applyAllAttributes(this, NAME);
+					
+					isReady = true;
+				}
+
+			}
+			
+			/**
+			 * reload data that may be changed in other modules
+			 * */
+			private function reloadData():void {
+				var ul:UserEvent = new UserEvent(UserEvent.LIST_USERS);
+				ul.dispatch();
+			}
+
+
+			/**
+			 * this is triggered after save, when only the KalturaPartner on the PartnerVO is replaced 
+			 * */
+			private function onPartnerDataChanged(kp:KalturaPartner):void {
+				if (partnerData) {
+					_clonedPartnerData = partnerData.clone();
+				}
+			}
+			
+			private function onPartnerDataLoaded(pvo:PartnerVO):void {
+				if (pvo) {
+					// remove the redundant trailing thing for partners who 
+					// registered from .org (or something)
+					if (pvo.partner.website) {
+						var i:int = pvo.partner.website.indexOf(" | Source =") ; 
+						if (i > -1) {
+							var s:String = pvo.partner.website;
+							s = s.substr(i, 11);
+							pvo.partner.website = s;
+						}
+					}
+					_clonedPartnerData = pvo.clone();
+					setDescribeYourself();
+					
+					if (_users) {
+						// list users call is not queued so it may return earlier.
+						// need update account owner:
+						pOwner.selectedIndex = getAccountOwner();
+					}
+				}
+			}
+
+
+			private function onAdminDataLoaded(avo:AdminVO):void {
+				if (avo)
+					_clonedAdminData = avo.clone();
+			}
+
+
+
+			private function setDescribeYourself():void {
+				var bFound:Boolean = false;
+				for (var i:int = 0; i < dyCB.dataProvider.length; i++) {
+					if (partnerData.partner.describeYourself == dyCB.dataProvider[i]) {
+						dyCB.selectedIndex = i;
+						bFound = true;
+					}
+				}
+				if (!bFound) {
+					dyCB.selectedIndex = _ctComboBox.length - 1;
+				}
+			}
+
+
+			//public functions
+			//------------------------------------------------
+			public function undo():void {
+				adminData = _clonedAdminData.clone();
+				partnerData = _clonedPartnerData.clone();
+				pOwner.selectedIndex = getAccountOwner();
+			}
+
+
+			public function isChanged():Boolean {
+				var res:Boolean = false;
+				if (partnerData && !partnerData.equals(_clonedPartnerData)) {
+					res = true;
+				}
+				if (adminData && !adminData.equals(_clonedAdminData)) {
+					res = true;
+				}
+				return res;
+			}
+
+
+			public function savePartnerInfo(force:Boolean):void {
+				if (!partnerData.equals(_clonedPartnerData) || force) {
+					nameValidator.source = pName;
+					if ((nameValidator.validate() as ValidationResultEvent).type == ValidationResultEvent.INVALID)
+						return;
+
+					_clonedPartnerData = partnerData.clone();
+					//do save
+					var partnerEvent:PartnerEvent = new PartnerEvent(PartnerEvent.UPDATE_PARTNER);
+					partnerEvent.dispatch();
+
+					KAnalyticsTracker.getInstance().sendEvent(KAnalyticsTrackerConsts.ACCOUNT, KalturaStatsKmcEventType.ACCOUNT_CHANGE_PARTNER_INFO, "AccountSettings>PartnerInfo>SaveChangesBtn");
+					GoogleAnalyticsTracker.getInstance().sendToGA(GoogleAnalyticsConsts.ACCOUNT_CHANGE_PARTNER_INFO, GoogleAnalyticsConsts.ACCOUNT);
+				}
+			}
+
+
+
+			public function saveChanges():void {
+				savePartnerInfo(false);
+			}
+
+
+			public function resetClonedData():void {
+				_clonedPartnerData = partnerData.clone();
+				_clonedAdminData = adminData.clone();
+			}
+
+
+			/**
+			 * partner vo has accountOwnerId, use it to select the kalturauser that is
+			 * the account owner.
+			 * @return id of the account owner in the users (pOwner) data provider array
+			 * */
+			private function getAccountOwner():int {
+				var uid:String = partnerData.partner.adminUserId;
+				var result:int = -1;
+				for (var i:int = 0; i < _users.length; i++) {
+					if ((_users[i] as KalturaUser).id == uid) {
+						result = i;
+						break;
+					}
+				}
+				return result;
+			}
+
+
+			/**
+			 * change the account owner on the partner vo
+			 * */
+			protected function changeAccountOwner(event:ListEvent):void {
+				partnerData.partner.adminUserId = (event.target.selectedItem as KalturaUser).id;
+			}
+
+
+			[Bindable]
+			/**
+			 * admin users for the current partner
+			 * */
+			public function get users():ArrayCollection
+			{
+				return _users;
+			}
+
+			/**
+			 * @private
+			 * */
+			public function set users(value:ArrayCollection):void
+			{
+				_users = value;
+				pOwner.dataProvider = value;
+				pOwner.dropdown.dataProvider = value;
+				pOwner.selectedIndex = getAccountOwner();
+			}
+			
+
+		]]>
+	</mx:Script>
+	<mx:StringValidator id="nameValidator" required="true" property="text" />
+
+	
+	
+	<mx:VBox id="infoBox" width="100%" height="100%" styleName="blueBox" disabledOverlayAlpha="0" horizontalAlign="left"
+			 verticalAlign="top">
+		<mx:Label styleName="expendableButton" text="{resourceManager.getString('account', 'partnerInfo')}"/>
+		<mx:Text id="partnerInfoText" width="100%" height="40"
+				 text="{resourceManager.getString('account', 'partnerInfoText')}" styleName="pageDescription"/>
+		
+		<mx:Form>
+			<mx:FormItem label="{resourceManager.getString('account', 'partnerIdB')}">
+				<mx:Label width="{TXT_WIDTH}" text="{partnerData.partnerId}" selectable="true"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'company_name')} *">
+				<mx:TextInput id="pName" width="{TXT_WIDTH}" text="{partnerData.partner.name}"
+							  change="{partnerData.partner.name = pName.text}" enabled="{infoBox.enabled}"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'owner_name')} *" >
+				<mx:ComboBox id="pOwner" width="{TXT_WIDTH}"
+							 change="changeAccountOwner(event)" labelField="fullName" enabled="{infoBox.enabled}"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'email')}">
+				<mx:Label id="pEmail" width="{TXT_WIDTH}" text="{(pOwner.selectedItem as KalturaUser).email}" enabled="{infoBox.enabled}" selectable="true"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'phone')} *" >
+				<mx:TextInput id="pPhone" width="{TXT_WIDTH}" text="{partnerData.partner.phone}"
+							  change="{partnerData.partner.phone = pPhone.text}" enabled="{infoBox.enabled}"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'website')}" >
+				<mx:TextInput id="pWebsite" width="{TXT_WIDTH}" text="{partnerData.partner.website}"
+							  change="{partnerData.partner.website = pWebsite.text}" enabled="{infoBox.enabled}"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'describeYourself')}" id="dyContainer" >
+				<mx:ComboBox id="dyCB" width="{TXT_WIDTH}" dataProvider="{_ctComboBox}"
+							 change="{partnerData.partner.describeYourself = dyCB.selectedItem.toString()}" enabled="{infoBox.enabled}"/>
+			</mx:FormItem>
+			<mx:FormItem label="{resourceManager.getString('account', 'partnerRefID')}" >
+				<mx:TextInput id="pRef" width="{TXT_WIDTH}" text="{partnerData.partner.referenceId}" 
+							  change="{partnerData.partner.referenceId = pRef.text}" enabled="{infoBox.enabled}"/>
+			</mx:FormItem>
+			<mx:Label text="{resourceManager.getString('account', 'reqF')}" fontSize="9"/>
+		</mx:Form>
+		
+		<mx:HBox width="{dyContainer.width + 15}" horizontalAlign="right">
+			<mx:Button id="saveChangesBtn" label="{resourceManager.getString('account', 'saveChanges')}"
+					   click="savePartnerInfo( true )" buttonMode="true"/>
+		</mx:HBox>
+	</mx:VBox>
+	
+</mx:HBox>

@@ -1,0 +1,541 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!---
+live streaming control tab of EntryDetailsWin
+-->
+<mx:Module xmlns:mx="http://www.adobe.com/2006/mxml"
+		   xmlns:control="com.kaltura.edw.control.*"
+		   xmlns:live="com.kaltura.edw.view.live.*"
+		   width="100%" height="100%" label="{resourceManager.getString('drilldown', 'liveStream')}"
+		   implements="com.kaltura.edw.business.IDrilldownPanel" layout="vertical">
+	<mx:Metadata>
+		[Event(name="validationComplete", type="com.kaltura.edw.events.ValidationResultEvent")] 
+		[Event(name="panelDataSaved", type="com.kaltura.edw.events.InternalKedEvent")] 
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.edw.business.EntryLiveStreamingHelper;
+			import com.kaltura.edw.business.KedJSGate;
+			import com.kaltura.edw.business.permissions.PermissionManager;
+			import com.kaltura.edw.constants.PanelConsts;
+			import com.kaltura.edw.control.events.LiveEvent;
+			import com.kaltura.edw.control.events.ProfileEvent;
+			import com.kaltura.edw.events.GeneralNonCairngormEvent;
+			import com.kaltura.edw.events.InternalKedEvent;
+			import com.kaltura.edw.events.ValidationResultEvent;
+			import com.kaltura.edw.model.datapacks.FlavorsDataPack;
+			import com.kaltura.edw.view.EntryDetailsWin;
+			import com.kaltura.edw.view.window.SettingsExample;
+			import com.kaltura.kmvc.model.IDataPackRepository;
+			import com.kaltura.types.KalturaSourceType;
+			import com.kaltura.vo.KalturaBaseEntry;
+			import com.kaltura.vo.KalturaLiveStreamBitrate;
+			import com.kaltura.vo.KalturaLiveStreamEntry;
+			
+			import mx.binding.utils.BindingUtils;
+			import mx.binding.utils.ChangeWatcher;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+
+			
+
+			private var _pop:SettingsExample;
+
+			[Bindable]
+			private var _selectedEntry:KalturaLiveStreamEntry;
+
+
+			private var _dpModel:IDataPackRepository;
+			
+			private var _cw:ChangeWatcher;
+			
+			[Bindable]
+			public var liveProfiles:ArrayCollection;
+			
+			/**
+			 * @RnP
+			 * */
+			public var enableKalturaLive:Boolean = true;
+			
+			[Bindable]
+			/**
+			 * @RnP
+			 * */
+			public var showLiveReportsButton:Boolean = true;
+			
+
+			public function set selectedEntry(value:KalturaBaseEntry):void {
+				if (value is KalturaLiveStreamEntry) {
+					_selectedEntry = value as KalturaLiveStreamEntry;
+				}
+				else {
+					_selectedEntry = null;
+				}
+			}
+
+
+			public function get selectedEntry():KalturaBaseEntry {
+				return _selectedEntry;
+			}
+
+
+			public function get dataPackModel():IDataPackRepository {
+				return _dpModel;
+			}
+
+
+			public function set dataPackModel(value:IDataPackRepository):void {
+				_dpModel = value;
+			}
+
+			
+			
+			public function get helpAnchor():String {
+				return "section_live_stream";
+			}
+
+
+			public function initData():void {
+				if (_selectedEntry) {
+					bitrateConfig.initData(_selectedEntry.bitrates);
+				}
+			}
+
+
+			public function validate():void {
+				var success:Boolean = true; // validation result
+				var errorMessage:String;
+				var errorTitle:String;
+				if (_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM) { // nothing to validate for kaltura live
+					var bitrates:Array = bitrateConfig.getBitrates();
+					if (!bitrates) {
+						//failed validation
+						success = false;
+						errorMessage = resourceManager.getString('drilldown', 'bitrateValidation');
+						errorTitle = resourceManager.getString('drilldown', 'liveStreamError');
+					}
+				}
+				var e:ValidationResultEvent = new ValidationResultEvent(ValidationResultEvent.VALIDATION_COMPLETE, success, errorMessage, errorTitle);
+				dispatchEvent(e);
+			}
+
+
+			public function destroy():void {
+			}
+
+
+			public function clear():void {
+			}
+
+
+			public function init():void {
+				PermissionManager.getInstance().applyAllAttributes(this, PanelConsts.LIVE_STREAM_PANEL);
+				// for kaltura live stream - get live profiles
+				if (enableKalturaLive) {// set by RnP
+					if (_cw) {
+						_cw.unwatch();
+					}
+					var fdp:FlavorsDataPack = _dpModel.getDataPack(FlavorsDataPack) as FlavorsDataPack;
+					_cw = BindingUtils.bindProperty(this, "liveProfiles", fdp, "liveConversionProfiles");
+					controller.dispatch(new ProfileEvent(ProfileEvent.LIST_LIVE_CONVERSION_PROFILES));
+				}
+			}
+
+
+			public function isChanged():Boolean {
+				var result:Boolean;
+				if (_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM) {
+					// get from conversion profile panel
+					result = convprofConfig.isChanged(); 
+				}
+				else {
+					// get from bitrates panel
+					result = bitrateConfig.isChanged();
+				}
+				return result;
+			}
+
+			
+
+
+			public function save():void {
+				if (_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM) {
+				// get from conversion profile panel
+					_selectedEntry.conversionProfileId = convprofConfig.getSelectedProfile();
+				}
+				else {
+				// get from bitrates panel
+					var bitrates:Array = bitrateConfig.getBitrates();
+					if (bitrates != null) {
+						_selectedEntry.bitrates = bitrates;
+					}
+				}
+				dispatchEvent(new InternalKedEvent(InternalKedEvent.PANEL_DATA_SAVED));
+			}
+
+
+
+			private function onRollOver(value:Number):void {
+				_pop = new SettingsExample();
+				switch (value) {
+					case 1:
+						_pop.stringToShow = resourceManager.getString('drilldown', 'screenshot1');
+						_pop.imageClass = 'url1';
+						_pop.imgWidth = 351;
+						_pop.imgHeight = 156;
+
+						break;
+					case 2:
+						_pop.stringToShow = resourceManager.getString('drilldown', 'screenshot1');
+						_pop.imageClass = 'url2';
+						_pop.imgWidth = 278;
+						_pop.imgHeight = 191;
+						break;
+					case 3:
+						_pop.stringToShow = resourceManager.getString('drilldown', 'screenshot3') + "\n" + resourceManager.getString('drilldown', 'screenshot1');
+						_pop.imageClass = 'url3';
+						_pop.imgWidth = 289;
+						_pop.imgHeight = 100;
+						break;
+				}
+				PopUpManager.addPopUp(_pop, this, true);
+				PopUpManager.centerPopUp(_pop);
+			}
+
+
+			private function onHelp(event:TextEvent):void {
+				var e:GeneralNonCairngormEvent = new GeneralNonCairngormEvent(EntryDetailsWin.HELP_REQUEST, true);
+				e.data = helpAnchor;
+				dispatchEvent(e);
+			}
+
+
+			private function fmeExport():void {
+				var xml:XML =
+					<flashmedialiveencoder_profile>
+						<preset>
+							<name>Custom</name>
+							<description></description>
+						</preset>
+						<capture>
+							<video>
+								<device></device>
+								<crossbar_input>0</crossbar_input>
+								<frame_rate></frame_rate>
+								<size>
+									<width></width>
+									<height></height>
+								</size>
+							</video>
+							<audio>
+								<device></device>
+								<crossbar_input>0</crossbar_input>
+								<sample_rate></sample_rate>
+								<channels>2</channels>
+								<input_volume>75</input_volume>
+							</audio>
+						</capture>
+						<encode>
+							<video>
+								<format></format>
+								<datarate></datarate>
+								<outputsize></outputsize>
+								<advanced>
+									<profile></profile>
+									<level></level>
+									<keyframe_frequency></keyframe_frequency>
+								</advanced>
+								<autoadjust>
+									<enable></enable>
+									<maxbuffersize></maxbuffersize>
+									<dropframes>
+										<enable></enable>
+									</dropframes>
+									<degradequality>
+										<enable></enable>
+										<minvideobitrate></minvideobitrate>
+										<preservepfq></preservepfq>
+									</degradequality>
+								</autoadjust>
+							</video>
+							<audio>
+								<format></format>
+								<datarate></datarate>
+							</audio>
+						</encode>
+						<restartinterval>
+							<days></days>
+							<hours></hours>
+							<minutes></minutes>
+						</restartinterval>
+						<reconnectinterval>
+							<attempts></attempts>
+							<interval></interval>
+						</reconnectinterval>
+						<output>
+							<rtmp>
+								<url></url>
+								<backup_url></backup_url>
+								<stream></stream>
+							</rtmp>
+						</output>
+						<metadata/>
+						<preview>
+							<video>
+								<input>
+									<zoom>100%</zoom>
+								</input>
+								<output>
+									<zoom>100%</zoom>
+								</output>
+							</video>
+							<audio></audio>
+						</preview>
+						<log>
+							<level>100</level>
+							<directory></directory>
+						</log>
+					</flashmedialiveencoder_profile>
+					;
+				
+				// capture devices
+				var captureXML:XML = xml.capture[0];
+				var cam:Camera = Camera.getCamera();
+				if (cam) {
+					captureXML.video.device.appendChild(cam.name);
+					captureXML.video.frame_rate.appendChild(cam.fps);
+					captureXML.video.size.width.appendChild(cam.width);
+					captureXML.video.size.height.appendChild(cam.height);
+				}
+				var mic:Microphone = Microphone.getMicrophone();
+				if (mic) {
+					captureXML.audio.device.appendChild(mic.name);
+				}
+
+				// assign outputs 
+				var outputXML:XML = xml.output[0];
+				(outputXML.rtmp.url[0] as XML).appendChild(_selectedEntry.primaryBroadcastingUrl);
+				(outputXML.rtmp.backup_url[0] as XML).appendChild(_selectedEntry.secondaryBroadcastingUrl);
+				(outputXML.rtmp.stream[0] as XML).appendChild(fixStreamName(_selectedEntry.streamName));
+
+				// assign bitrates
+				var bitratesString:String = "";
+				var dimensionsStrings:String = "";
+				var bitrates:Array;
+				if (_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM) {
+					bitrates = convprofConfig.getBitrates();
+				}
+				else {
+					bitrates = bitrateConfig.getBitrates();
+				}
+				var br:KalturaLiveStreamBitrate;
+				for (var i:int = 0; i<bitrates.length; i++) {
+					br = bitrates[i] as KalturaLiveStreamBitrate;
+					bitratesString += br.bitrate.toString() + ";";
+					dimensionsStrings += br.width.toString() + "x" + br.height.toString() + ";";
+				}
+				
+				var encode:XML = xml.encode[0] as XML;
+				(encode.video.datarate[0] as XML).appendChild(bitratesString);
+				(encode.video.outputsize[0] as XML).appendChild(dimensionsStrings);
+				
+				encode.audio.format.appendChild("MP3");
+				encode.audio.datarate.appendChild("128");
+				
+				// additional
+				if (_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM || _selectedEntry.sourceType == KalturaSourceType.AKAMAI_UNIVERSAL_LIVE) {
+					encode.video.format.appendChild("H.264");
+					encode.video.advanced.profile.appendChild("Baseline");
+					encode.video.advanced.level.appendChild("3.1");
+					encode.video.advanced.keyframe_frequency.appendChild("2 seconds");
+						
+					xml.capture.audio.sample_rate.appendChild("44100");
+				}
+
+				var myFile:FileReference = new FileReference();
+				myFile.save(xml.toXMLString(), resourceManager.getString('drilldown', 'ExportToFme.xml', [_selectedEntry.id]));
+
+			}
+			
+			
+			private function openLiveReport(event:MouseEvent):void
+			{
+				KedJSGate.openLiveAnalyticsDrilldown(_selectedEntry.id, _selectedEntry.name);
+			}
+			
+			private function fixStreamName(name:String):String {
+				return name.replace('%i', '1');
+			}
+			
+		
+			protected function regenerateToken(event:MouseEvent):void
+			{
+				Alert.show(resourceManager.getString('drilldown', 'confirmRegenerateToken'), 
+					resourceManager.getString('drilldown', 'confirmRegenerateTokenTitle'), 
+					Alert.YES|Alert.NO, this, alertHandler, null, Alert.NO);
+			}
+			
+			private function alertHandler(event:CloseEvent):void
+			{
+				if(event.detail == Alert.YES) {
+					// disaptch event that will trigger the regenerate command
+					var e:LiveEvent = new LiveEvent(LiveEvent.REGENERATE_LIVE_TOKEN);
+					e.data = _selectedEntry.id;
+					controller.dispatch(e);
+				}
+			}
+			
+		]]>
+	</mx:Script>
+	<control:LivestreamTabController id="controller"/>
+	
+	<mx:VBox visible="{_selectedEntry.sourceType != KalturaSourceType.MANUAL_LIVE_STREAM}"
+			 width="100%"
+			 includeInLayout="{_selectedEntry.sourceType != KalturaSourceType.MANUAL_LIVE_STREAM}"
+			 styleName="noPadding">
+		<mx:Label styleName="drillDownLabel"
+				  text="{resourceManager.getString('drilldown', 'brodcastingSettings')}"/>
+		<mx:Text width="100%" htmlText="{resourceManager.getString('drilldown', 'broadcastingText')}"
+				 link="onHelp(event)"/>
+		<mx:Spacer height="20"/>
+	
+		<!-- broadcast urls -->
+		<mx:HBox width="100%">
+			<mx:Label styleName="drillDownLabel"
+					  text="{resourceManager.getString('drilldown', 'Broadcastingurls')}"/>
+			<mx:Button buttonMode="true" click="{onRollOver(1)}" styleName="help"/>
+		</mx:HBox>
+		
+		<mx:HBox width="100%">
+			<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}"
+					  styleName="drillDownLabel"
+					  text="{resourceManager.getString('drilldown', 'PrimaryURL')}"/>
+			<mx:Label id="primaryUrl" width="{EntryLiveStreamingHelper.BROADCASTING_WIDTH}"
+					  selectable="true" styleName="drillDownSubLabel"
+					  text="{_selectedEntry.primaryBroadcastingUrl}" truncateToFit="false"/>
+		</mx:HBox>
+	
+		<mx:HBox width="100%">
+			<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}"
+					  styleName="drillDownLabel"
+					  text="{resourceManager.getString('drilldown', 'BackupURL')}"/>
+			<mx:Label id="backupUrl" width="{EntryLiveStreamingHelper.BROADCASTING_WIDTH}"
+					  selectable="true" styleName="drillDownSubLabel"
+					  text="{_selectedEntry.secondaryBroadcastingUrl}" truncateToFit="false"/>
+			<mx:Spacer width="30"/>
+		</mx:HBox>
+		
+		<mx:HBox width="100%">
+			<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}"
+					  styleName="drillDownLabel"
+					  text=""/>
+			<mx:Button label="{resourceManager.getString('drilldown', 'regenerateLiveToken')}"
+					   click="regenerateToken(event)"
+					   visible="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM}"
+					   includeInLayout="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM}"/>
+		</mx:HBox>
+	
+		
+		<mx:VBox width="100%">
+			<mx:HBox width="100%">
+				<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}"
+						  styleName="drillDownLabel"
+						  text="{resourceManager.getString('drilldown', 'streamName')}"/>
+				<mx:Label id="streamName" width="{EntryLiveStreamingHelper.BROADCASTING_WIDTH}"
+						  selectable="true" styleName="drillDownSubLabel"
+						  text="{fixStreamName(_selectedEntry.streamName)}" truncateToFit="false"/>
+			</mx:HBox>
+			<mx:HBox>
+				<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}"
+						  styleName="drillDownLabel" text=""/>
+				<mx:Text width="{EntryLiveStreamingHelper.BROADCASTING_WIDTH}" selectable="true"
+						 styleName="drillDownSubLabel"
+						 text="{resourceManager.getString('drilldown', 'streamNameNote')}"
+						 truncateToFit="false"/>
+			</mx:HBox>
+		</mx:VBox>
+	
+		<mx:Spacer height="20"/>
+		
+		<!-- Kaltura - rtsp urls -->
+		<live:RtspInfo visible="false" width="100%" includeInLayout="false"
+					   selectedEntry="{_selectedEntry}" styleName="noPadding"/>
+	
+		<!-- stream config - Akamai -->
+		<live:AkamaiStreamConfig visible="{_selectedEntry.sourceType == KalturaSourceType.AKAMAI_UNIVERSAL_LIVE}"
+								 width="100%"
+								 includeInLayout="{_selectedEntry.sourceType == KalturaSourceType.AKAMAI_UNIVERSAL_LIVE}"
+								 selectedEntry="{_selectedEntry}" styleName="noPadding"/>
+		
+		<!-- stream config - Kaltura -->
+		<live:KalturaStreamConfig visible="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM}"
+								  width="100%"
+								  includeInLayout="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM}"
+								  selectedEntry="{_selectedEntry}" styleName="noPadding"/>
+		
+		<!-- bitrate config -->
+		<live:BitrateConfig id="bitrateConfig"
+							visible="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}"
+							width="100%" extrainfo="onRollOver(3)"
+							includeInLayout="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}"/>
+			
+		<!-- conv prof -->
+		<live:ConversionProfileConfig id="convprofConfig"
+									  visible="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM}"
+									  width="100%"
+									  includeInLayout="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM}"
+									  profiles="{liveProfiles}" selectedEntry="{_selectedEntry}"/>
+		
+		<!-- broadcast credentials -->
+		<mx:HBox visible="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}" width="100%"
+				 includeInLayout="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}">
+			<mx:Label styleName="drillDownLabel"
+					  text="{resourceManager.getString('drilldown', 'broadcastinCredential')}"/>
+			<mx:Button buttonMode="true" click="{onRollOver(2)}" styleName="help"/>			
+		</mx:HBox>
+	
+		<mx:HBox visible="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}" width="100%"
+				 includeInLayout="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}">
+			<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}" styleName="drillDownLabel"
+					  text="{resourceManager.getString('drilldown', 'userName')}"/>
+			<mx:Label id="userName" width="{EntryLiveStreamingHelper.BROADCASTING_WIDTH}"
+					  selectable="true" styleName="drillDownSubLabel"
+					  text="{_selectedEntry.streamUsername}"/>
+			<mx:Spacer width="30"/>
+		</mx:HBox>
+	
+		<mx:HBox visible="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}" width="100%"
+				 includeInLayout="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}">
+			<mx:Label width="{EntryLiveStreamingHelper.PREFIXES_WIDTH}" styleName="drillDownLabel"
+					  text="{resourceManager.getString('drilldown', 'password')}"/>
+			<mx:Label id="password" width="{EntryLiveStreamingHelper.BROADCASTING_WIDTH}"
+					  selectable="true" styleName="drillDownSubLabel"
+					  text="{_selectedEntry.streamPassword}"/>
+		</mx:HBox>
+	
+		<mx:Spacer height="20"/>
+	
+		<!-- IPs -->
+		<live:IPsConfig visible="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}"
+						width="100%"
+						includeInLayout="{_selectedEntry.sourceType != KalturaSourceType.LIVE_STREAM}"
+						selectedEntry="{_selectedEntry}"/>
+		
+		<mx:HBox width="100%" styleName="noPadding">
+			<mx:Button id="exportBtn" label="{resourceManager.getString('drilldown', 'exportToFme')}"
+					   click="{fmeExport()}"/>
+			<mx:LinkButton visible="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM &amp;&amp; showLiveReportsButton}"
+						   label="{resourceManager.getString('drilldown', 'openLiveReport')}"
+						   click="openLiveReport(event)"
+						   includeInLayout="{_selectedEntry.sourceType == KalturaSourceType.LIVE_STREAM &amp;&amp; showLiveReportsButton}"
+						   styleName="liveReportsButton"/>
+		</mx:HBox>
+	</mx:VBox>
+	
+	<!-- manual stream -->
+	<live:Manual id="manualWrap" width="100%" styleName="noPadding" selectedEntry="{_selectedEntry}"
+			 visible="{_selectedEntry.sourceType == KalturaSourceType.MANUAL_LIVE_STREAM}"
+			 includeInLayout="{_selectedEntry.sourceType == KalturaSourceType.MANUAL_LIVE_STREAM}" />
+		
+</mx:Module>

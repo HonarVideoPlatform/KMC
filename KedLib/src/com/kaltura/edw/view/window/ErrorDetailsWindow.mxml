@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<containers:ConfinedTitleWindow xmlns:containers="com.kaltura.containers.*" xmlns:mx="http://www.adobe.com/2006/mxml"
+				layout="vertical" styleName="TitleWindowType2"
+				backgroundColor="#f7f7f7"
+				width="360" height="230"
+				showCloseButton="true" close="onClose()" creationComplete="onCreationComplete()">
+	<mx:Metadata>
+		[ResourceBundle("drilldown")]
+	</mx:Metadata>
+	<mx:Script>
+		<![CDATA[
+			import com.kaltura.edw.constants.PanelConsts;
+			import com.kaltura.edw.events.KedDataEvent;
+			
+			import mx.containers.VBox;
+			import mx.containers.ViewStack;
+			import mx.controls.Label;
+			import mx.controls.LinkButton;
+			import mx.core.Container;
+			import mx.managers.PopUpManager;
+			
+			public static const MISSING_THUMB_ERROR:String = "missingThumbError";
+			public static const MISSING_FLAVOR_ERROR:String = "missingFlavorError";
+			public static const METADATA_ERROR:String = "metadataError";
+			public static const MISSING_METADATA:String = "missingMetadataError";
+			public static const CONDITION_NOT_MET:String = "conditionNotMet";
+			public static const GENERAL_ERROR:String = "generalError";
+			
+			/**
+			 * the type of error shown in current window
+			 * */
+			private var _type:String;
+			
+			[Bindable]
+			/**
+			 * show the "go to tab" button
+			 * */
+			private var _visibleBtn:Boolean = false;
+			
+			[Bindable]
+			/**
+			 * label for the "go to tab" button
+			 * */
+			private var _btnText:String;
+			
+			[Bindable]
+			/**
+			 * error description
+			 * */
+			private var _infoLabel:String;
+			
+			[Bindable]
+			/**
+			 * how to fix error
+			 * */
+			private var _extraInfoLabel:String;
+			
+			
+			private var _isFirstParam:Boolean = true;
+			[Bindable]
+			public var enableLinks:Boolean = false;
+			
+			[Bindable]
+			/**
+			 * (set from SubmissionStatusRenderer)
+			 * */
+			public var showCustomDataBtn:Boolean = false;
+			
+			
+			private function onCreationComplete():void {
+				this.mx_internal::closeButton.buttonMode = true;
+			}
+			
+			public function setType(type:String):void {
+				_type = type;
+				_btnText = null;
+				switch (_type) {
+					case MISSING_THUMB_ERROR:
+						_infoLabel = resourceManager.getString('drilldown','missingDimensions');
+						_extraInfoLabel = resourceManager.getString('drilldown','gotoThumbnailTabMsg');
+						_btnText = resourceManager.getString('drilldown','gotoThumbnailTab');
+						break;
+					case MISSING_FLAVOR_ERROR:
+						_infoLabel = resourceManager.getString('drilldown','missingFlavors');
+						_extraInfoLabel = resourceManager.getString('drilldown','gotoFlavorTabMsg');
+						_btnText = resourceManager.getString('drilldown','gotoFlavorTab');
+						break;
+					case MISSING_METADATA:
+						_infoLabel = resourceManager.getString('drilldown','missingMetadataMsg');
+						_extraInfoLabel = resourceManager.getString('drilldown','gotoMetadataTabMsg');
+						_btnText = resourceManager.getString('drilldown','gotoMetadataTab');
+						break;
+					case METADATA_ERROR:
+						_infoLabel = resourceManager.getString('drilldown','invalidMetadata');
+						_extraInfoLabel = resourceManager.getString('drilldown','gotoMetadataTabMsgInvalid');
+						_btnText = resourceManager.getString('drilldown','gotoMetadataTab');
+						break;
+					case CONDITION_NOT_MET:
+						_infoLabel = resourceManager.getString('drilldown','invalidAutoDist');
+						_extraInfoLabel = resourceManager.getString('drilldown','invalidAutoDistMsg');
+						_btnText = resourceManager.getString('drilldown','gotoMetadataTab');
+						break;
+				}
+				
+				if (_btnText) {
+					_visibleBtn = true;
+				}
+				else {
+					_visibleBtn = false;
+				}
+			}
+			
+			public function setGeneralLabel(error:String):void {
+				_infoLabel = error;
+			}
+			
+			private function onLinkClick(event:Event):void {
+				switch (_type) {
+					case MISSING_THUMB_ERROR:
+						setSelectedChild(PanelConsts.THUMBNAILS_PANEL);
+						break;
+					case MISSING_FLAVOR_ERROR:
+						setSelectedChild(PanelConsts.ASSETS_PANEL)
+						break;
+					case MISSING_METADATA:
+					case METADATA_ERROR:
+					case CONDITION_NOT_MET:
+						setSelectedChild(PanelConsts.METADATA_PANEL)
+						break;
+				}
+				PopUpManager.removePopUp(this);
+			}
+			
+			private function setSelectedChild(childName:String):void {
+				var de:KedDataEvent = new KedDataEvent(KedDataEvent.NAVIGATE);
+				de.data = childName;
+				dispatchEvent(de);
+			}
+			
+			private function onClose():void {
+				PopUpManager.removePopUp(this);
+			}
+			
+			/**
+			 * adds the given string to the window
+			 * */
+			public function addErrorDetail(error:String, addInNewLine:Boolean = false):void {
+				if (!addInNewLine) {
+					if (_isFirstParam){
+						_infoLabel += error;
+						_isFirstParam = false;
+					}
+					else {
+						_infoLabel += ", " + error;
+					}
+				}
+				else {
+					_infoLabel += '\n'+error;
+				}
+			}
+			
+		]]>
+	</mx:Script>
+	<mx:Text htmlText="{_infoLabel}" width="100%"/>
+	<mx:Text text="{_extraInfoLabel}" width="100%" visible="{_visibleBtn}" includeInLayout="{_visibleBtn}"/>
+	
+	<mx:ControlBar>
+		
+		<mx:LinkButton id="linkBtn" paddingLeft="0" label="{_btnText}" visible="{(showCustomDataBtn || _visibleBtn) &amp;&amp; enableLinks}" 
+					   includeInLayout="{showCustomDataBtn &amp;&amp; _visibleBtn &amp;&amp; enableLinks}" 
+					   click="{onLinkClick(event)}"/>
+	</mx:ControlBar>
+	
+</containers:ConfinedTitleWindow>
